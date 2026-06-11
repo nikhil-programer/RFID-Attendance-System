@@ -1,0 +1,107 @@
+"RFID Attendance System"
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define SS_PIN 10
+#define RST_PIN 9
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+const int defaultLED = 3;
+const int grantLED = 4;
+const int denyLED = 5;
+const int buzzer = 6;
+
+// Nick ka card - AUTHORIZED
+byte authorizedUID[] = {0xA3, 0xC1, 0xF2, 0x06};
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+  lcd.init();
+  lcd.backlight();
+
+  pinMode(defaultLED, OUTPUT);
+  pinMode(grantLED, OUTPUT);
+  pinMode(denyLED, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  digitalWrite(defaultLED, HIGH);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Scan Your Card");
+  Serial.println("Scan your RFID tag...");
+}
+
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
+
+  Serial.print("Card UID:");
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(rfid.uid.uidByte[i], HEX);
+  }
+  Serial.println();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Checking...");
+  delay(500);
+  lcd.clear();
+
+  if (checkUID(rfid.uid.uidByte, authorizedUID)) {
+    lcd.setCursor(0, 0);
+    lcd.print("Welcome, Nick!");   // Name show karega
+    lcd.setCursor(0, 1);
+    lcd.print("Present :)");
+    Serial.println("ACCESS GRANTED - Nick marked Present");
+    grantAccess();
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Access Denied!");
+    lcd.setCursor(0, 1);
+    lcd.print("Unknown Card");
+    Serial.println("ACCESS DENIED - Mismatch Student");
+    denyAccess();
+  }
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  delay(2000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Scan Your Card");
+}
+
+bool checkUID(byte scannedUID[], byte authorized[]) {
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (scannedUID[i] != authorized[i]) return false;
+  }
+  return true;
+}
+
+void grantAccess() {
+  digitalWrite(grantLED, HIGH);
+  digitalWrite(denyLED, LOW);
+  tone(buzzer, 1000); delay(300);
+  tone(buzzer, 1500); delay(300);
+  noTone(buzzer);
+  delay(1500);
+  digitalWrite(grantLED, LOW);
+}
+
+void denyAccess() {
+  digitalWrite(denyLED, HIGH);
+  digitalWrite(grantLED, LOW);
+  tone(buzzer, 400); delay(800);
+  noTone(buzzer);
+  delay(1200);
+  digitalWrite(denyLED, LOW);
+}
